@@ -11,6 +11,7 @@ RUN apt-get update \
                         libssl-dev \
                         libxml2-dev \
                         libxslt1-dev \
+                        rsync \
     && rm -rf /var/lib/apt/lists/*
 
 # PostgreSQL client
@@ -49,6 +50,8 @@ RUN ./node_modules/.bin/gulp
 # Compile translations
 RUN pybabel compile -d critiquebrainz/frontend/translations
 
+RUN useradd --create-home --shell /bin/bash critiquebrainz
+
 ############
 # Services #
 ############
@@ -63,8 +66,14 @@ COPY ./docker/prod/uwsgi/uwsgi.ini /etc/uwsgi/uwsgi.ini
 
 # cron jobs
 ADD ./docker/prod/cron/jobs /tmp/crontab
-RUN crontab /tmp/crontab
+RUN chmod 0644 /tmp/crontab && crontab -u critiquebrainz /tmp/crontab
 RUN rm /tmp/crontab
+RUN touch /var/log/dump_backup.log /var/log/public_dump_create.log /var/log/json_dump_create.log \
+    && chown critiquebrainz:critiquebrainz /var/log/dump_backup.log /var/log/public_dump_create.log /var/log/json_dump_create.log
+
+# Make sure the cron service doesn't start automagically
+# http://smarden.org/runit/runsv.8.html
+RUN touch /etc/service/cron/down
 
 ARG GIT_COMMIT_SHA
 ENV GIT_SHA ${GIT_COMMIT_SHA}

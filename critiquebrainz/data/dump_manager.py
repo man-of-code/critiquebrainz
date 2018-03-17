@@ -39,6 +39,7 @@ _TABLES = {
         "review_id",
         "timestamp",
         "text",
+        "rating",
     ),
     "license": (
         "id",
@@ -57,6 +58,12 @@ _TABLES = {
         "clients",
         "grants",
         "tokens"
+    ),
+    "avg_rating": (
+        "entity_id",
+        "entity_type",
+        "rating",
+        "count",
     ),
 }
 
@@ -169,7 +176,7 @@ def json(location, rotate=False):
             tar.add(license_dir, arcname='reviews')
 
             # Copying legal text
-            tar.add(os.path.join("critiquebrainz", "data", "licenses", safe_name + ".txt"), arcname='COPYING')
+            tar.add(os.path.join(os.path.dirname(os.path.realpath(__file__)), "licenses", safe_name + ".txt"), arcname='COPYING')
 
             print(" + %s/critiquebrainz-%s-%s-json.tar.bz2" % (location, datetime.today().strftime('%Y%m%d'), safe_name))
 
@@ -230,7 +237,7 @@ def public(location, rotate=False):
 
         # Including additional information about this archive
         # Copying the most restrictive license there (CC BY-NC-SA 3.0)
-        tar.add(os.path.join('critiquebrainz', 'data', 'licenses', 'cc-by-nc-sa-30.txt'), arcname='COPYING')
+        tar.add(os.path.join(os.path.dirname(os.path.realpath(__file__)), "licenses", "cc-by-nc-sa-30.txt"), arcname='COPYING')
         tar.add(os.path.join(temp_dir, 'TIMESTAMP'), arcname='TIMESTAMP')
         tar.add(os.path.join(temp_dir, 'SCHEMA_SEQUENCE'), arcname='SCHEMA_SEQUENCE')
 
@@ -247,19 +254,26 @@ def public(location, rotate=False):
          WHERE review.is_hidden = false AND review.is_draft = false
     """.format(columns=', '.join(['revision.' + col for col in _TABLES["revision"]]))
     with tarfile.open(os.path.join(dump_dir, "cbdump-reviews-all.tar.bz2"), "w:bz2") as tar:
+
         # Dumping tables
         reviews_combined_tables_dir = os.path.join(temp_dir, 'cbdump-reviews-all')
         create_path(reviews_combined_tables_dir)
+
         with open(os.path.join(reviews_combined_tables_dir, 'review'), 'w') as f:
             cursor.copy_to(f, "(SELECT {columns} FROM review WHERE is_hidden = false AND is_draft = false)"
                            .format(columns=', '.join(_TABLES["review"])))
+
         with open(os.path.join(reviews_combined_tables_dir, 'revision'), 'w') as f:
             cursor.copy_to(f, "({sql})".format(sql=REVISION_COMBINED_SQL))
+
+        with open(os.path.join(reviews_combined_tables_dir, 'avg_rating'), 'w') as f:
+            cursor.copy_to(f, "(SELECT {columns} FROM avg_rating)".format(columns=", ".join(_TABLES["avg_rating"])))
+
         tar.add(reviews_combined_tables_dir, arcname='cbdump')
 
         # Including additional information about this archive
         # Copying the most restrictive license there (CC BY-NC-SA 3.0)
-        tar.add(os.path.join('critiquebrainz', 'data', 'licenses', 'cc-by-nc-sa-30.txt'), arcname='COPYING')
+        tar.add(os.path.join(os.path.dirname(os.path.realpath(__file__)), "licenses", "cc-by-nc-sa-30.txt"), arcname='COPYING')
         tar.add(os.path.join(temp_dir, 'TIMESTAMP'), arcname='TIMESTAMP')
         tar.add(os.path.join(temp_dir, 'SCHEMA_SEQUENCE'), arcname='SCHEMA_SEQUENCE')
 
@@ -284,10 +298,13 @@ def public(location, rotate=False):
             with open(os.path.join(tables_dir, 'revision'), 'w') as f:
                 cursor.copy_to(f, """({REVISION_COMBINED_SQL} AND review.license_id='{license_id}')"""
                                .format(REVISION_COMBINED_SQL=REVISION_COMBINED_SQL, license_id=license["id"]))
+            with open(os.path.join(tables_dir, 'avg_rating'), 'w') as f:
+                cursor.copy_to(f, "(SELECT {columns} FROM avg_rating)".format(columns=", ".join(_TABLES["avg_rating"])))
+
             tar.add(tables_dir, arcname='cbdump')
 
             # Including additional information about this archive
-            tar.add(os.path.join("critiquebrainz", "data", "licenses", safe_name + ".txt"), arcname='COPYING')
+            tar.add(os.path.join(os.path.dirname(os.path.realpath(__file__)), "licenses", safe_name + ".txt"), arcname='COPYING')
             tar.add(os.path.join(temp_dir, 'TIMESTAMP'), arcname='TIMESTAMP')
             tar.add(os.path.join(temp_dir, 'SCHEMA_SEQUENCE'), arcname='SCHEMA_SEQUENCE')
 
@@ -344,6 +361,7 @@ def importer(archive):
         import_data(os.path.join(temp_dir, 'cbdump', 'license'), 'license')
         import_data(os.path.join(temp_dir, 'cbdump', 'review'), 'review')
         import_data(os.path.join(temp_dir, 'cbdump', 'revision'), 'revision')
+        import_data(os.path.join(temp_dir, 'cbdump', 'avg_rating'), 'avg_rating')
 
         shutil.rmtree(temp_dir)  # Cleanup
         print("Done!")
